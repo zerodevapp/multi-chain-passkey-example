@@ -1,6 +1,7 @@
 "use client"
 import dotenv from "dotenv"
 import {
+    addressToEmptyAccount,
     createKernelAccount,
     createKernelAccountClient,
     createZeroDevPaymasterClient,
@@ -15,12 +16,20 @@ import {
     webauthnSignUserOps
 } from "@zerodev/multi-chain-validator"
 import {
+    serializeMultiChainPermissionAccounts,
+    deserializePermissionAccount,
+    toPermissionValidator
+} from "@zerodev/permissions"
+import { toECDSASigner } from "@zerodev/permissions/signers"
+import { toSudoPolicy } from "@zerodev/permissions/policies"
+import {
     bundlerActions,
     deepHexlify,
     ENTRYPOINT_ADDRESS_V07
 } from "permissionless"
 import React, { useEffect, useState } from "react"
 import { createPublicClient, http, Transport, Chain, zeroAddress } from "viem"
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { sepolia, optimismSepolia } from "viem/chains"
 import { EntryPoint } from "permissionless/types"
 
@@ -95,10 +104,56 @@ export default function Home() {
     const createAccountAndClient = async (
         multiChainWebAuthnValidators: any[]
     ) => {
+        const sepoliaSessionKeyAccount = privateKeyToAccount(
+            generatePrivateKey()
+        )
+
+        const optimismSepoliaSessionKeyAccount = privateKeyToAccount(
+            generatePrivateKey()
+        )
+
+        // create an empty account as the session key signer
+        const sepoliaEmptyAccount = addressToEmptyAccount(
+            sepoliaSessionKeyAccount.address
+        )
+        const optimismSepoliaEmptyAccount = addressToEmptyAccount(
+            optimismSepoliaSessionKeyAccount.address
+        )
+
+        const sepoliaEmptySessionKeySigner = toECDSASigner({
+            signer: sepoliaEmptyAccount
+        })
+
+        const optimismSepoliaEmptySessionKeySigner = toECDSASigner({
+            signer: optimismSepoliaEmptyAccount
+        })
+
+        const sudoPolicy = toSudoPolicy({})
+
+        // create a permission validator plugin with empty account signer
+        const sepoliaPermissionPlugin = await toPermissionValidator(
+            sepoliaPublicClient,
+            {
+                entryPoint: getEntryPoint(),
+                signer: sepoliaEmptySessionKeySigner,
+                policies: [sudoPolicy]
+            }
+        )
+
+        const optimismSepoliaPermissionPlugin = await toPermissionValidator(
+            optimismSepoliaPublicClient,
+            {
+                entryPoint: getEntryPoint(),
+                signer: optimismSepoliaEmptySessionKeySigner,
+                policies: [sudoPolicy]
+            }
+        )
+
         sepoliaKernelAccount = await createKernelAccount(sepoliaPublicClient, {
             entryPoint: getEntryPoint(),
             plugins: {
-                sudo: multiChainWebAuthnValidators[0]
+                sudo: multiChainWebAuthnValidators[0],
+                regular: sepoliaPermissionPlugin
             }
         })
 
@@ -107,7 +162,8 @@ export default function Home() {
             {
                 entryPoint: getEntryPoint(),
                 plugins: {
-                    sudo: multiChainWebAuthnValidators[1]
+                    sudo: multiChainWebAuthnValidators[1],
+                    regular: optimismSepoliaPermissionPlugin
                 }
             }
         )
@@ -116,8 +172,45 @@ export default function Home() {
             throw new Error("Addresses do not match")
         }
 
+        // serialize multi chain permission account with empty account signer, so get approvals
+        const [sepoliaApproval, optimismSepoliaApproval] =
+            await serializeMultiChainPermissionAccounts([
+                {
+                    account: sepoliaKernelAccount
+                },
+                {
+                    account: opSepoliaKernelAccount
+                }
+            ])
+
+        // get real session key signers
+        const sepoliaSessionKeySigner = toECDSASigner({
+            signer: sepoliaSessionKeyAccount
+        })
+
+        const optimismSepoliaSessionKeySigner = toECDSASigner({
+            signer: optimismSepoliaSessionKeyAccount
+        })
+
+        // deserialize the permission account with the real session key signers
+        const deserializeSepoliaKernelAccount =
+            await deserializePermissionAccount(
+                sepoliaPublicClient,
+                getEntryPoint(),
+                sepoliaApproval,
+                sepoliaSessionKeySigner
+            )
+
+        const deserializeOptimismSepoliaKernelAccount =
+            await deserializePermissionAccount(
+                optimismSepoliaPublicClient,
+                getEntryPoint(),
+                optimismSepoliaApproval,
+                optimismSepoliaSessionKeySigner
+            )
+
         sepoliaKernelClient = createKernelAccountClient({
-            account: sepoliaKernelAccount,
+            account: deserializeSepoliaKernelAccount,
             chain: SEPOLIA,
             bundlerTransport: http(SEPOLIA_BUNDLER_URL),
             entryPoint: getEntryPoint(),
@@ -132,7 +225,7 @@ export default function Home() {
         })
 
         opSepoliaKernelClient = createKernelAccountClient({
-            account: opSepoliaKernelAccount,
+            account: deserializeOptimismSepoliaKernelAccount,
             chain: OPTIMISM_SEPOLIA,
             bundlerTransport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
             entryPoint: getEntryPoint(),
@@ -161,8 +254,6 @@ export default function Home() {
             passkeyServerUrl: SEPOLIA_PASSKEY_SERVER_URL,
             mode: WebAuthnMode.Register
         })
-
-        console.log("WebAuthnKey: ", webAuthnKey)
 
         const sepoliaMultiChainWebAuthnValidator =
             await toMultiChainWebAuthnValidator(sepoliaPublicClient, {
@@ -198,98 +289,25 @@ export default function Home() {
         setIsSendingUserOps(true)
         setUserOpsStatus("Sending UserOp...")
 
-        const sepoliaUserOp = await webauthnPrepareMultiUserOpRequest({
-            client: sepoliaKernelClient,
-            args: {
-                userOperation: {
-                    callData: await sepoliaKernelAccount.encodeCallData({
-                        to: zeroAddress,
-                        value: BigInt(0),
-                        data: "0x"
-                    })
-                },
-                middleware: {
-                    sponsorUserOperation: async ({ userOperation }) => {
-                        return sepoliaZeroDevPaymasterClient.sponsorUserOperation(
-                            {
-                                userOperation,
-                                entryPoint: getEntryPoint()
-                            }
-                        )
-                    }
-                }
-            },
-            numOfUserOps: 2
+        const sepoliaTxHash = await sepoliaKernelClient.sendTransaction({
+            to: zeroAddress,
+            value: BigInt(0),
+            data: "0x"
         })
 
-        const optimismSepoliaUserOp = await webauthnPrepareMultiUserOpRequest({
-            client: opSepoliaKernelClient,
-            args: {
-                userOperation: {
-                    callData: await opSepoliaKernelAccount.encodeCallData({
-                        to: zeroAddress,
-                        value: BigInt(0),
-                        data: "0x"
-                    })
-                },
-                middleware: {
-                    sponsorUserOperation: async ({ userOperation }) => {
-                        return optimismSepoliaZeroDevPaymasterClient.sponsorUserOperation(
-                            {
-                                userOperation,
-                                entryPoint: getEntryPoint()
-                            }
-                        )
-                    }
-                }
-            },
-            numOfUserOps: 2
-        })
+        setSepoliaUserOpHash(sepoliaTxHash)
 
-        const signedUserOps = await webauthnSignUserOps({
-            account: sepoliaKernelAccount,
-            multiUserOps: [
-                { userOperation: sepoliaUserOp, chainId: sepolia.id },
-                {
-                    userOperation: optimismSepoliaUserOp,
-                    chainId: optimismSepolia.id
-                }
-            ],
-            entryPoint: getEntryPoint()
-        })
+        const optimismSepoliaTxHash =
+            await opSepoliaKernelClient.sendTransaction({
+                to: zeroAddress,
+                value: BigInt(0),
+                data: "0x"
+            })
 
-        const sepoliaBundlerClient = sepoliaKernelClient.extend(
-            bundlerActions(ENTRYPOINT_ADDRESS_V07)
-        )
-
-        const optimismSepoliaBundlerClient = opSepoliaKernelClient.extend(
-            bundlerActions(ENTRYPOINT_ADDRESS_V07)
-        )
-
-        const sepoliaUserOpHash = await sepoliaKernelClient.request({
-            method: "eth_sendUserOperation",
-            params: [deepHexlify(signedUserOps[0]), getEntryPoint()]
-        })
-
-        setSepoliaUserOpHash(sepoliaUserOpHash)
-
-        await sepoliaBundlerClient.waitForUserOperationReceipt({
-            hash: sepoliaUserOpHash
-        })
-
-        const optimismSepoliaUserOpHash = await opSepoliaKernelClient.request({
-            method: "eth_sendUserOperation",
-            params: [deepHexlify(signedUserOps[1]), getEntryPoint()]
-        })
-
-        setOpSepoliaUserOpHash(optimismSepoliaUserOpHash)
-
-        await optimismSepoliaBundlerClient.waitForUserOperationReceipt({
-            hash: optimismSepoliaUserOpHash
-        })
+        setOpSepoliaUserOpHash(optimismSepoliaTxHash)
 
         // Update the message based on the count of UserOps
-        const userOpsMessage = `Multi-UserOps completed. <a href="https://jiffyscan.xyz/userOpHash/${sepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Sepolia User Op.</a> \n <a href="https://jiffyscan.xyz/userOpHash/${optimismSepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Optimism Sepolia User Op.</a>`
+        const userOpsMessage = `Multi-UserOps completed. <a href="https://sepolia.etherscan.io/tx/${sepoliaTxHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Sepolia User Op.</a> \n <a href="https://sepolia-optimism.etherscan.io/tx/${optimismSepoliaTxHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Optimism Sepolia User Op.</a>`
 
         setUserOpsStatus(userOpsMessage)
         setIsSendingUserOps(false)

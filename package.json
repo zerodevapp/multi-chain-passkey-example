@@ -10,7 +10,7 @@
     },
     "dependencies": {
         "@zerodev/multi-chain-validator": "5.2.0-alpha-15",
-        "@zerodev/permissions": "5.2.7-alpha-3",
+        "@zerodev/permissions": "5.2.7-alpha-5",
         "@zerodev/sdk": "5.2.12-alpha-3",
         "dotenv": "^16.4.5",
         "next": "14.1.0",
