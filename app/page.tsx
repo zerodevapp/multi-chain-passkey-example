@@ -3,17 +3,15 @@ import dotenv from "dotenv"
 import {
     addressToEmptyAccount,
     createKernelAccount,
-    createKernelAccountClient,
     createZeroDevPaymasterClient,
     KernelSmartAccount,
     KernelAccountClient
 } from "@zerodev/sdk"
 import {
+    createKernelMultiChainClient,
     toWebAuthnKey,
     toMultiChainWebAuthnValidator,
-    WebAuthnMode,
-    webauthnPrepareMultiUserOpRequest,
-    webauthnSignUserOps
+    WebAuthnMode
 } from "@zerodev/multi-chain-validator"
 import {
     serializeMultiChainPermissionAccounts,
@@ -209,7 +207,7 @@ export default function Home() {
                 optimismSepoliaSessionKeySigner
             )
 
-        sepoliaKernelClient = createKernelAccountClient({
+        sepoliaKernelClient = createKernelMultiChainClient({
             account: deserializeSepoliaKernelAccount,
             chain: SEPOLIA,
             bundlerTransport: http(SEPOLIA_BUNDLER_URL),
@@ -224,7 +222,7 @@ export default function Home() {
             }
         })
 
-        opSepoliaKernelClient = createKernelAccountClient({
+        opSepoliaKernelClient = createKernelMultiChainClient({
             account: deserializeOptimismSepoliaKernelAccount,
             chain: OPTIMISM_SEPOLIA,
             bundlerTransport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
