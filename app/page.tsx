@@ -2,23 +2,19 @@
 import dotenv from "dotenv"
 import {
     createKernelAccount,
-    createKernelAccountClient,
     createZeroDevPaymasterClient,
-    KernelSmartAccount,
-    KernelAccountClient
+    KernelSmartAccount
 } from "@zerodev/sdk"
 import {
+    createKernelMultiChainClient,
     toWebAuthnKey,
     toMultiChainWebAuthnValidator,
     WebAuthnMode,
-    webauthnPrepareMultiUserOpRequest,
-    webauthnSignUserOps
+    webauthnSignUserOps,
+    KernelMultiChainClient,
+    ValidatorType
 } from "@zerodev/multi-chain-validator"
-import {
-    bundlerActions,
-    deepHexlify,
-    ENTRYPOINT_ADDRESS_V07
-} from "permissionless"
+import { bundlerActions, ENTRYPOINT_ADDRESS_V07 } from "permissionless"
 import React, { useEffect, useState } from "react"
 import { createPublicClient, http, Transport, Chain, zeroAddress } from "viem"
 import { sepolia, optimismSepolia } from "viem/chains"
@@ -66,14 +62,14 @@ const optimismSepoliaZeroDevPaymasterClient = createZeroDevPaymasterClient({
 })
 
 let sepoliaKernelAccount: KernelSmartAccount<EntryPoint>
-let sepoliaKernelClient: KernelAccountClient<
+let sepoliaKernelClient: KernelMultiChainClient<
     EntryPoint,
     Transport,
     Chain,
     KernelSmartAccount<EntryPoint>
 >
 let opSepoliaKernelAccount: KernelSmartAccount<EntryPoint>
-let opSepoliaKernelClient: KernelAccountClient<
+let opSepoliaKernelClient: KernelMultiChainClient<
     EntryPoint,
     Transport,
     Chain,
@@ -116,7 +112,7 @@ export default function Home() {
             throw new Error("Addresses do not match")
         }
 
-        sepoliaKernelClient = createKernelAccountClient({
+        sepoliaKernelClient = createKernelMultiChainClient({
             account: sepoliaKernelAccount,
             chain: SEPOLIA,
             bundlerTransport: http(SEPOLIA_BUNDLER_URL),
@@ -131,7 +127,7 @@ export default function Home() {
             }
         })
 
-        opSepoliaKernelClient = createKernelAccountClient({
+        opSepoliaKernelClient = createKernelMultiChainClient({
             account: opSepoliaKernelAccount,
             chain: OPTIMISM_SEPOLIA,
             bundlerTransport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
@@ -198,53 +194,35 @@ export default function Home() {
         setIsSendingUserOps(true)
         setUserOpsStatus("Sending UserOp...")
 
-        const sepoliaUserOp = await webauthnPrepareMultiUserOpRequest({
-            client: sepoliaKernelClient,
-            args: {
-                userOperation: {
-                    callData: await sepoliaKernelAccount.encodeCallData({
-                        to: zeroAddress,
-                        value: BigInt(0),
-                        data: "0x"
-                    })
-                },
-                middleware: {
-                    sponsorUserOperation: async ({ userOperation }) => {
-                        return sepoliaZeroDevPaymasterClient.sponsorUserOperation(
-                            {
-                                userOperation,
-                                entryPoint: getEntryPoint()
-                            }
-                        )
+        const sepoliaUserOp =
+            await sepoliaKernelClient.prepareMultiUserOpRequest(
+                {
+                    userOperation: {
+                        callData: await sepoliaKernelAccount.encodeCallData({
+                            to: zeroAddress,
+                            value: BigInt(0),
+                            data: "0x"
+                        })
                     }
-                }
-            },
-            numOfUserOps: 2
-        })
+                },
+                ValidatorType.WEBAUTHN,
+                2
+            )
 
-        const optimismSepoliaUserOp = await webauthnPrepareMultiUserOpRequest({
-            client: opSepoliaKernelClient,
-            args: {
-                userOperation: {
-                    callData: await opSepoliaKernelAccount.encodeCallData({
-                        to: zeroAddress,
-                        value: BigInt(0),
-                        data: "0x"
-                    })
-                },
-                middleware: {
-                    sponsorUserOperation: async ({ userOperation }) => {
-                        return optimismSepoliaZeroDevPaymasterClient.sponsorUserOperation(
-                            {
-                                userOperation,
-                                entryPoint: getEntryPoint()
-                            }
-                        )
+        const optimismSepoliaUserOp =
+            await opSepoliaKernelClient.prepareMultiUserOpRequest(
+                {
+                    userOperation: {
+                        callData: await opSepoliaKernelAccount.encodeCallData({
+                            to: zeroAddress,
+                            value: BigInt(0),
+                            data: "0x"
+                        })
                     }
-                }
-            },
-            numOfUserOps: 2
-        })
+                },
+                ValidatorType.WEBAUTHN,
+                2
+            )
 
         const signedUserOps = await webauthnSignUserOps({
             account: sepoliaKernelAccount,
@@ -266,9 +244,8 @@ export default function Home() {
             bundlerActions(ENTRYPOINT_ADDRESS_V07)
         )
 
-        const sepoliaUserOpHash = await sepoliaKernelClient.request({
-            method: "eth_sendUserOperation",
-            params: [deepHexlify(signedUserOps[0]), getEntryPoint()]
+        const sepoliaUserOpHash = await sepoliaBundlerClient.sendUserOperation({
+            userOperation: signedUserOps[0]
         })
 
         setSepoliaUserOpHash(sepoliaUserOpHash)
@@ -277,10 +254,10 @@ export default function Home() {
             hash: sepoliaUserOpHash
         })
 
-        const optimismSepoliaUserOpHash = await opSepoliaKernelClient.request({
-            method: "eth_sendUserOperation",
-            params: [deepHexlify(signedUserOps[1]), getEntryPoint()]
-        })
+        const optimismSepoliaUserOpHash =
+            await optimismSepoliaBundlerClient.sendUserOperation({
+                userOperation: signedUserOps[1]
+            })
 
         setOpSepoliaUserOpHash(optimismSepoliaUserOpHash)
 
