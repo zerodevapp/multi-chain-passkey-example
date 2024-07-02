@@ -19,6 +19,7 @@ import React, { useEffect, useState } from "react"
 import { createPublicClient, http, Transport, Chain, zeroAddress } from "viem"
 import { sepolia, optimismSepolia } from "viem/chains"
 import { EntryPoint } from "permissionless/types"
+import { KERNEL_V3_1 } from '@zerodev/sdk/constants'
 
 dotenv.config()
 
@@ -95,7 +96,8 @@ export default function Home() {
             entryPoint: getEntryPoint(),
             plugins: {
                 sudo: multiChainWebAuthnValidators[0]
-            }
+            },
+            kernelVersion: KERNEL_V3_1
         })
 
         opSepoliaKernelAccount = await createKernelAccount(
@@ -104,7 +106,8 @@ export default function Home() {
                 entryPoint: getEntryPoint(),
                 plugins: {
                     sudo: multiChainWebAuthnValidators[1]
-                }
+                },
+                kernelVersion: KERNEL_V3_1
             }
         )
 
@@ -162,16 +165,16 @@ export default function Home() {
 
         const sepoliaMultiChainWebAuthnValidator =
             await toMultiChainWebAuthnValidator(sepoliaPublicClient, {
-                passkeyServerUrl: SEPOLIA_PASSKEY_SERVER_URL,
                 webAuthnKey,
-                entryPoint: ENTRYPOINT_ADDRESS_V07
+                entryPoint: ENTRYPOINT_ADDRESS_V07,
+                kernelVersion: KERNEL_V3_1
             })
 
         const optimismSepoliaMultiChainWebAuthnValidator =
             await toMultiChainWebAuthnValidator(optimismSepoliaPublicClient, {
-                passkeyServerUrl: OPTIMISM_SEPOLIA_PASSKEY_SERVER_URL,
                 webAuthnKey,
-                entryPoint: ENTRYPOINT_ADDRESS_V07
+                entryPoint: ENTRYPOINT_ADDRESS_V07,
+                kernelVersion: KERNEL_V3_1
             })
 
         await createAccountAndClient([

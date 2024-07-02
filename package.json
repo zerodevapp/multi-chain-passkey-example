@@ -9,9 +9,9 @@
         "lint": "next lint"
     },
     "dependencies": {
-        "@zerodev/multi-chain-validator": "5.2.2",
-        "@zerodev/permissions": "5.2.8",
-        "@zerodev/sdk": "5.2.15",
+        "@zerodev/multi-chain-validator": "5.3.2",
+        "@zerodev/permissions": "5.3.1",
+        "@zerodev/sdk": "5.3.2",
         "dotenv": "^16.4.5",
         "next": "14.1.0",
         "react": "^18",
