@@ -7,8 +7,8 @@ import {
 } from "@zerodev/sdk"
 import {
     toMultiChainWebAuthnValidator,
-    sendUserOperations,
-    SendUserOperationsParameters
+    prepareAndSignUserOperations,
+    PrepareAndSignUserOperationsParameters
 } from "@zerodev/multi-chain-web-authn-validator"
 import { toWebAuthnKey, WebAuthnMode } from "@zerodev/webauthn-key"
 import React, { useEffect, useState } from "react"
@@ -217,7 +217,7 @@ export default function Home() {
             })
         )
 
-        const userOpParams: SendUserOperationsParameters[] = [
+        const userOpParams: PrepareAndSignUserOperationsParameters[] = [
             {
                 ...userOps[0],
                 chainId: sepolia.id
@@ -228,30 +228,34 @@ export default function Home() {
             }
         ]
 
-        const userOpHashes = await sendUserOperations(clients, userOpParams)
+        const signedUserOps = await prepareAndSignUserOperations(
+            clients,
+            userOpParams
+        )
+        const sepoliaUserOp = signedUserOps[0]
+        const optimismSepoliaUserOp = signedUserOps[1]
 
-        console.log("userOpHashes", userOpHashes)
+        console.log("sending sepoliaUserOp")
+        const sepoliaUserOpHash = await sepoliaKernelClient.sendUserOperation(
+            sepoliaUserOp
+        )
 
-        const newSepoliaUserOpHash = userOpHashes[0]
-        setSepoliaUserOpHash(newSepoliaUserOpHash)
-
-        console.log("sepoliaUserOpHash", newSepoliaUserOpHash)
+        console.log("sepoliaUserOpHash", sepoliaUserOpHash)
         await sepoliaKernelClient.waitForUserOperationReceipt({
-            hash: newSepoliaUserOpHash,
-            timeout: 1000000
+            hash: sepoliaUserOpHash
         })
 
-        const newOpSepoliaUserOpHash = userOpHashes[1]
-        setOpSepoliaUserOpHash(newOpSepoliaUserOpHash)
+        console.log("sending optimismSepoliaUserOp")
+        const optimismSepoliaUserOpHash =
+            await opSepoliaKernelClient.sendUserOperation(optimismSepoliaUserOp)
 
-        console.log("optimismSepoliaUserOpHash", newOpSepoliaUserOpHash)
+        console.log("optimismSepoliaUserOpHash", optimismSepoliaUserOpHash)
         await opSepoliaKernelClient.waitForUserOperationReceipt({
-            hash: newOpSepoliaUserOpHash,
-            timeout: 1000000
+            hash: optimismSepoliaUserOpHash
         })
 
         // Update the message based on the count of UserOps
-        const userOpsMessage = `Multi-UserOps completed. <a href="https://jiffyscan.xyz/userOpHash/${newSepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Sepolia User Op.</a> \n <a href="https://jiffyscan.xyz/userOpHash/${newOpSepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Optimism Sepolia User Op.</a>`
+        const userOpsMessage = `Multi-UserOps completed. <a href="https://jiffyscan.xyz/userOpHash/${sepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Sepolia User Op.</a> \n <a href="https://jiffyscan.xyz/userOpHash/${optimismSepoliaUserOpHash}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700">Optimism Sepolia User Op.</a>`
 
         setUserOpsStatus(userOpsMessage)
         setIsSendingUserOps(false)
