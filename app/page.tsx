@@ -4,7 +4,7 @@ import {
     addressToEmptyAccount,
     createKernelAccount,
     createKernelAccountClient,
-    createZeroDevPaymasterClient
+    createZeroDevPaymasterClient,
 } from "@zerodev/sdk"
 import { toMultiChainWebAuthnValidator } from "@zerodev/multi-chain-web-authn-validator"
 import { toWebAuthnKey, WebAuthnMode } from "@zerodev/webauthn-key"
@@ -196,7 +196,7 @@ export default function Home() {
             chain: SEPOLIA,
             bundlerTransport: http(SEPOLIA_BUNDLER_URL, { timeout: 1000000 }),
             paymaster: {
-                getPaymasterData(userOperation) {
+                getPaymasterData(userOperation: any) {
                     return sepoliaZeroDevPaymasterClient.sponsorUserOperation({
                         userOperation
                     })
@@ -211,7 +211,7 @@ export default function Home() {
                 timeout: 1000000
             }),
             paymaster: {
-                getPaymasterData(userOperation) {
+                getPaymasterData(userOperation: any) {
                     return optimismSepoliaZeroDevPaymasterClient.sponsorUserOperation(
                         {
                             userOperation
