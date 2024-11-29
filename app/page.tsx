@@ -3,16 +3,11 @@ import dotenv from "dotenv"
 import {
     addressToEmptyAccount,
     createKernelAccount,
-    createZeroDevPaymasterClient,
-    KernelSmartAccount,
-    KernelAccountClient
+    createKernelAccountClient,
+    createZeroDevPaymasterClient
 } from "@zerodev/sdk"
-import {
-    createKernelMultiChainClient,
-    toWebAuthnKey,
-    toMultiChainWebAuthnValidator,
-    WebAuthnMode
-} from "@zerodev/multi-chain-validator"
+import { toMultiChainWebAuthnValidator } from "@zerodev/multi-chain-web-authn-validator"
+import { toWebAuthnKey, WebAuthnMode } from "@zerodev/webauthn-key"
 import {
     serializeMultiChainPermissionAccounts,
     deserializePermissionAccount,
@@ -20,16 +15,11 @@ import {
 } from "@zerodev/permissions"
 import { toECDSASigner } from "@zerodev/permissions/signers"
 import { toSudoPolicy } from "@zerodev/permissions/policies"
-import {
-    bundlerActions,
-    deepHexlify,
-    ENTRYPOINT_ADDRESS_V07
-} from "permissionless"
 import React, { useEffect, useState } from "react"
 import { createPublicClient, http, Transport, Chain, zeroAddress } from "viem"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { sepolia, optimismSepolia } from "viem/chains"
-import { EntryPoint } from "permissionless/types"
+import { getEntryPoint, KERNEL_V3_1 } from "@zerodev/sdk/constants"
 
 dotenv.config()
 
@@ -48,44 +38,32 @@ const OPTIMISM_SEPOLIA_PASSKEY_SERVER_URL = `https://passkeys.zerodev.app/api/v3
 const SEPOLIA = sepolia
 const OPTIMISM_SEPOLIA = optimismSepolia
 
-const getEntryPoint = (): EntryPoint => {
-    return ENTRYPOINT_ADDRESS_V07
-}
+const entryPoint = getEntryPoint("0.7")
 
-const sepoliaPublicClient = createPublicClient({
-    transport: http(SEPOLIA_BUNDLER_URL)
+const sepoliaPublicClient: any = createPublicClient({
+    transport: http(SEPOLIA_BUNDLER_URL),
+    chain: sepolia
 })
 
-const optimismSepoliaPublicClient = createPublicClient({
-    transport: http(OPTIMISM_SEPOLIA_BUNDLER_URL)
+const optimismSepoliaPublicClient: any = createPublicClient({
+    transport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
+    chain: optimismSepolia
 })
 
 const sepoliaZeroDevPaymasterClient = createZeroDevPaymasterClient({
     chain: SEPOLIA,
-    transport: http(SEPOLIA_PAYMASTER_URL),
-    entryPoint: getEntryPoint()
+    transport: http(SEPOLIA_PAYMASTER_URL)
 })
 
 const optimismSepoliaZeroDevPaymasterClient = createZeroDevPaymasterClient({
     chain: OPTIMISM_SEPOLIA,
-    transport: http(OPTIMISM_SEPOLIA_PAYMASTER_URL),
-    entryPoint: getEntryPoint()
+    transport: http(OPTIMISM_SEPOLIA_PAYMASTER_URL)
 })
 
-let sepoliaKernelAccount: KernelSmartAccount<EntryPoint>
-let sepoliaKernelClient: KernelAccountClient<
-    EntryPoint,
-    Transport,
-    Chain,
-    KernelSmartAccount<EntryPoint>
->
-let opSepoliaKernelAccount: KernelSmartAccount<EntryPoint>
-let opSepoliaKernelClient: KernelAccountClient<
-    EntryPoint,
-    Transport,
-    Chain,
-    KernelSmartAccount<EntryPoint>
->
+let sepoliaKernelAccount: any
+let sepoliaKernelClient: any
+let opSepoliaKernelAccount: any
+let opSepoliaKernelClient: any
 
 export default function Home() {
     const [mounted, setMounted] = useState(false)
@@ -118,11 +96,11 @@ export default function Home() {
             optimismSepoliaSessionKeyAccount.address
         )
 
-        const sepoliaEmptySessionKeySigner = toECDSASigner({
+        const sepoliaEmptySessionKeySigner = await toECDSASigner({
             signer: sepoliaEmptyAccount
         })
 
-        const optimismSepoliaEmptySessionKeySigner = toECDSASigner({
+        const optimismSepoliaEmptySessionKeySigner = await toECDSASigner({
             signer: optimismSepoliaEmptyAccount
         })
 
@@ -132,37 +110,41 @@ export default function Home() {
         const sepoliaPermissionPlugin = await toPermissionValidator(
             sepoliaPublicClient,
             {
-                entryPoint: getEntryPoint(),
+                entryPoint,
                 signer: sepoliaEmptySessionKeySigner,
-                policies: [sudoPolicy]
+                policies: [sudoPolicy],
+                kernelVersion: KERNEL_V3_1
             }
         )
 
         const optimismSepoliaPermissionPlugin = await toPermissionValidator(
             optimismSepoliaPublicClient,
             {
-                entryPoint: getEntryPoint(),
+                entryPoint,
                 signer: optimismSepoliaEmptySessionKeySigner,
-                policies: [sudoPolicy]
+                policies: [sudoPolicy],
+                kernelVersion: KERNEL_V3_1
             }
         )
 
         sepoliaKernelAccount = await createKernelAccount(sepoliaPublicClient, {
-            entryPoint: getEntryPoint(),
+            entryPoint,
             plugins: {
                 sudo: multiChainWebAuthnValidators[0],
                 regular: sepoliaPermissionPlugin
-            }
+            },
+            kernelVersion: KERNEL_V3_1
         })
 
         opSepoliaKernelAccount = await createKernelAccount(
             optimismSepoliaPublicClient,
             {
-                entryPoint: getEntryPoint(),
+                entryPoint,
                 plugins: {
                     sudo: multiChainWebAuthnValidators[1],
                     regular: optimismSepoliaPermissionPlugin
-                }
+                },
+                kernelVersion: KERNEL_V3_1
             }
         )
 
@@ -182,11 +164,11 @@ export default function Home() {
             ])
 
         // get real session key signers
-        const sepoliaSessionKeySigner = toECDSASigner({
+        const sepoliaSessionKeySigner = await toECDSASigner({
             signer: sepoliaSessionKeyAccount
         })
 
-        const optimismSepoliaSessionKeySigner = toECDSASigner({
+        const optimismSepoliaSessionKeySigner = await toECDSASigner({
             signer: optimismSepoliaSessionKeyAccount
         })
 
@@ -194,7 +176,8 @@ export default function Home() {
         const deserializeSepoliaKernelAccount =
             await deserializePermissionAccount(
                 sepoliaPublicClient,
-                getEntryPoint(),
+                entryPoint,
+                KERNEL_V3_1,
                 sepoliaApproval,
                 sepoliaSessionKeySigner
             )
@@ -202,37 +185,36 @@ export default function Home() {
         const deserializeOptimismSepoliaKernelAccount =
             await deserializePermissionAccount(
                 optimismSepoliaPublicClient,
-                getEntryPoint(),
+                entryPoint,
+                KERNEL_V3_1,
                 optimismSepoliaApproval,
                 optimismSepoliaSessionKeySigner
             )
 
-        sepoliaKernelClient = createKernelMultiChainClient({
+        sepoliaKernelClient = createKernelAccountClient({
             account: deserializeSepoliaKernelAccount,
             chain: SEPOLIA,
-            bundlerTransport: http(SEPOLIA_BUNDLER_URL),
-            entryPoint: getEntryPoint(),
-            middleware: {
-                sponsorUserOperation: async ({ userOperation }) => {
+            bundlerTransport: http(SEPOLIA_BUNDLER_URL, { timeout: 1000000 }),
+            paymaster: {
+                getPaymasterData(userOperation) {
                     return sepoliaZeroDevPaymasterClient.sponsorUserOperation({
-                        userOperation,
-                        entryPoint: getEntryPoint()
+                        userOperation
                     })
                 }
             }
         })
 
-        opSepoliaKernelClient = createKernelMultiChainClient({
+        opSepoliaKernelClient = createKernelAccountClient({
             account: deserializeOptimismSepoliaKernelAccount,
             chain: OPTIMISM_SEPOLIA,
-            bundlerTransport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
-            entryPoint: getEntryPoint(),
-            middleware: {
-                sponsorUserOperation: async ({ userOperation }) => {
+            bundlerTransport: http(OPTIMISM_SEPOLIA_BUNDLER_URL, {
+                timeout: 1000000
+            }),
+            paymaster: {
+                getPaymasterData(userOperation) {
                     return optimismSepoliaZeroDevPaymasterClient.sponsorUserOperation(
                         {
-                            userOperation,
-                            entryPoint: getEntryPoint()
+                            userOperation
                         }
                     )
                 }
@@ -245,26 +227,29 @@ export default function Home() {
 
     // Function to be called when "Register" is clicked
     const handleRegister = async () => {
-        setIsRegistering(true)
-
         const webAuthnKey = await toWebAuthnKey({
             passkeyName: username,
             passkeyServerUrl: SEPOLIA_PASSKEY_SERVER_URL,
-            mode: WebAuthnMode.Register
+            mode: WebAuthnMode.Register,
+            passkeyServerHeaders: {}
         })
+
+        console.log("WebAuthnKey: ", webAuthnKey)
 
         const sepoliaMultiChainWebAuthnValidator =
             await toMultiChainWebAuthnValidator(sepoliaPublicClient, {
-                passkeyServerUrl: SEPOLIA_PASSKEY_SERVER_URL,
                 webAuthnKey,
-                entryPoint: ENTRYPOINT_ADDRESS_V07
+                entryPoint,
+                kernelVersion: KERNEL_V3_1,
+                multiChainIds: [sepolia.id, optimismSepolia.id]
             })
 
         const optimismSepoliaMultiChainWebAuthnValidator =
             await toMultiChainWebAuthnValidator(optimismSepoliaPublicClient, {
-                passkeyServerUrl: OPTIMISM_SEPOLIA_PASSKEY_SERVER_URL,
                 webAuthnKey,
-                entryPoint: ENTRYPOINT_ADDRESS_V07
+                entryPoint,
+                kernelVersion: KERNEL_V3_1,
+                multiChainIds: [sepolia.id, optimismSepolia.id]
             })
 
         await createAccountAndClient([
@@ -273,7 +258,9 @@ export default function Home() {
         ])
 
         setIsRegistering(false)
-        window.alert("Register done.  Try sending UserOps.")
+        window.alert(
+            "Register and session key approval done.  Try sending UserOps."
+        )
     }
 
     const handleLogin = async () => {
