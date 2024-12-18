@@ -45,11 +45,13 @@ const OPTIMISM_SEPOLIA = optimismSepolia
 const entryPoint = getEntryPoint("0.7")
 
 const sepoliaPublicClient = createPublicClient({
-    transport: http(SEPOLIA_BUNDLER_URL)
+    transport: http(SEPOLIA_BUNDLER_URL),
+    chain: sepolia
 })
 
 const optimismSepoliaPublicClient = createPublicClient({
-    transport: http(OPTIMISM_SEPOLIA_BUNDLER_URL)
+    transport: http(OPTIMISM_SEPOLIA_BUNDLER_URL),
+    chain: optimismSepolia
 })
 
 const sepoliaZeroDevPaymasterClient = createZeroDevPaymasterClient({
@@ -189,7 +191,7 @@ export default function Home() {
         setUserOpsStatus("Sending UserOp...")
 
         console.log("sending sepoliaUserOp")
-        const sepoliaUserOp = await sepoliaKernelClient.prepareUserOperation({
+        const sepoliaUserOpHash = await sepoliaKernelClient.sendUserOperation({
             callData: await sepoliaKernelClient.account.encodeCalls([
                 {
                     to: zeroAddress,
@@ -198,10 +200,6 @@ export default function Home() {
                 }
             ])
         })
-
-        console.log("sepoliaUserOp", sepoliaUserOp)
-
-        const sepoliaUserOpHash = await sepoliaKernelClient.sendUserOperation(sepoliaUserOp)
 
         setSepoliaUserOpHash(sepoliaUserOpHash)
 
